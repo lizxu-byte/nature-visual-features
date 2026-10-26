@@ -75,18 +75,27 @@ def spectral_validation() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def coastline_validation(n: int = 1024) -> pd.DataFrame:
-    """Level sets of fractional-Brownian-like surfaces (Voss, 1988): D = 3 - alpha."""
+def coastline_validation() -> pd.DataFrame:
+    """Outlines of level sets of 1/f^alpha surfaces; D -> 3 - alpha (Voss, 1988)."""
+    methods = {
+        "boundary": lambda b: fractal.fractal_dimension_boundary(b).D,
+        "edges_sigma2": lambda b: fractal.fractal_dimension_edges(b, sigma=2.0).D,
+        "edges_sigma1": lambda b: fractal.fractal_dimension_edges(b, sigma=1.0).D,
+    }
     rows = []
-    for alpha in (1.2, 1.4, 1.6, 1.8):
-        est = []
-        for seed in SEEDS:
-            noise = synthetic.power_law_noise(n, alpha, seed=seed)
-            binary = (noise > np.median(noise)).astype(float)
-            est.append(fractal.fractal_dimension_edges(binary, sigma=1.0).D)
-        est = np.array(est)
-        rows.append({"alpha": alpha, "D_expected": 3 - alpha, "D_edges_mean": est.mean(),
-                     "D_edges_sd": est.std(ddof=1), "bias": est.mean() - (3 - alpha)})
+    for n in (512, 1024):
+        for alpha in (1.2, 1.4, 1.6, 1.8):
+            est = {m: [] for m in methods}
+            for seed in SEEDS:
+                noise = synthetic.power_law_noise(n, alpha, seed=seed)
+                binary = (noise > np.median(noise)).astype(float)
+                for m, fn in methods.items():
+                    est[m].append(fn(binary))
+            for m, values in est.items():
+                v = np.array(values)
+                rows.append({"n": n, "alpha": alpha, "D_expected": 3 - alpha, "method": m,
+                             "D_mean": v.mean(), "D_sd": v.std(ddof=1),
+                             "bias": v.mean() - (3 - alpha)})
     return pd.DataFrame(rows)
 
 
@@ -151,7 +160,7 @@ def main() -> None:
     print(frac.pivot(index="pattern", columns="n", values="error").round(3), "\n")
     print(fit.pivot(index="pattern", columns="s_max", values="error").round(3), "\n")
     print(spec.round(3).to_string(index=False), "\n")
-    print(coast.round(3).to_string(index=False))
+    print(coast.pivot_table(index=["n", "alpha"], columns="method", values="bias").round(3))
 
 
 if __name__ == "__main__":

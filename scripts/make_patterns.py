@@ -3,7 +3,8 @@
 Patterns (512 x 512 RGB):
   grid_facade        regular window grid on a plain wall
   voronoi_cells      irregular cells (random seeds) with dark joints
-  lsystem_branching  bracketed L-system plant (Prusinkiewicz & Lindenmayer, 1990)
+  lsystem_branching  bracketed L-system plant, of the kind described by
+                     Prusinkiewicz & Lindenmayer (1990)
   noise_alpha_X      grayscale 1/f^alpha noise, alpha in {1.0, 1.5, 2.0}
   levelset_alpha_X   two-tone level set of 1/f^alpha noise; the outline of a
                      level set of such a surface has D = 3 - alpha in the limit
@@ -79,7 +80,7 @@ def lsystem(axiom: str, rules: dict[str, str], iterations: int) -> str:
 
 
 def lsystem_branching(n: int = N, iterations: int = 5, angle_deg: float = 25.0) -> np.ndarray:
-    """Fractal plant: X -> F+[[X]-X]-F[-X]+X, F -> FF (Prusinkiewicz & Lindenmayer, 1990)."""
+    """Branching plant from the bracketed L-system X -> F+[[X]-X]-F[-X]+X, F -> FF."""
     program = lsystem("X", {"X": "F+[[X]-X]-F[-X]+X", "F": "FF"}, iterations)
     x, y, heading = 0.0, 0.0, math.radians(65)
     stack, segments = [], []

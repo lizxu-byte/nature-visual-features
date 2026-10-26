@@ -57,3 +57,20 @@ def test_parse_page_skips_disallowed():
     assert fetch.parse_page(page(licence="CC BY-NC 4.0"), "forest") is None
     assert fetch.parse_page(page(restrictions="personality"), "forest") is None
     assert fetch.parse_page(page(mime="image/tiff"), "forest") is None
+
+
+def _http_error(code, retry_after=None):
+    import email.message
+    import urllib.error
+
+    headers = email.message.Message()
+    if retry_after is not None:
+        headers["Retry-After"] = retry_after
+    return urllib.error.HTTPError("https://x", code, "msg", headers, None)
+
+
+def test_retry_delay_honours_retry_after():
+    assert fetch.retry_delay(_http_error(429, "13"), 0) == 13
+    assert fetch.retry_delay(_http_error(429, "1"), 0) == 5  # floor
+    assert fetch.retry_delay(_http_error(503), 2) == 20  # exponential without header
+    assert fetch.retry_delay(_http_error(404), 0) is None

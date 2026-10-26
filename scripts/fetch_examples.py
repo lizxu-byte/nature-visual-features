@@ -25,6 +25,7 @@ import json
 import re
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -106,11 +107,39 @@ def parse_page(page: dict, category: str) -> dict | None:
     }
 
 
+def retry_delay(err: urllib.error.HTTPError, attempt: int) -> float | None:
+    """Seconds to wait before retrying a 429/503 response, or None to give up.
+
+    Wikimedia rate-limits shared IPs and sends Retry-After; honour it (at
+    least 5 s), otherwise back off exponentially.
+    """
+    if err.code not in {429, 503}:
+        return None
+    try:
+        after = float(err.headers.get("Retry-After", ""))
+    except (TypeError, ValueError):
+        after = 0.0
+    return max(after, 5.0 * 2 ** attempt)
+
+
+def fetch_bytes(url: str, timeout: float, retries: int = 6) -> bytes:
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    for attempt in range(retries + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.read()
+        except urllib.error.HTTPError as err:
+            delay = retry_delay(err, attempt)
+            if delay is None or attempt == retries:
+                raise
+            print(f"HTTP {err.code}; retrying in {delay:.0f} s", file=sys.stderr)
+            time.sleep(delay)
+    raise AssertionError("unreachable")
+
+
 def api_get(params: dict) -> dict:
     query = urllib.parse.urlencode({**params, "format": "json", "formatversion": "2"})
-    req = urllib.request.Request(f"{API}?{query}", headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        return json.load(resp)
+    return json.loads(fetch_bytes(f"{API}?{query}", timeout=60))
 
 
 def search(query: str, width: int, limit: int = 50) -> list[dict]:
@@ -125,9 +154,7 @@ def search(query: str, width: int, limit: int = 50) -> list[dict]:
 
 def download(url: str, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=120) as resp:
-        dest.write_bytes(resp.read())
+    dest.write_bytes(fetch_bytes(url, timeout=120))
 
 
 def from_search(per_category: int, width: int, out_dir: Path) -> list[dict]:
@@ -138,7 +165,12 @@ def from_search(per_category: int, width: int, out_dir: Path) -> list[dict]:
             row = parse_page(page, category)
             if row is None:
                 continue
-            download(row["thumb_url"], out_dir / row["file"])
+            if not (out_dir / row["file"]).exists():
+                try:
+                    download(row["thumb_url"], out_dir / row["file"])
+                except urllib.error.HTTPError as err:
+                    print(f"skipped {row['title']}: HTTP {err.code}", file=sys.stderr)
+                    continue
             rows.append(row)
             kept += 1
             print(f"{category}: {row['title']} ({row['licence']})", file=sys.stderr)

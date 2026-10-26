@@ -220,7 +220,7 @@ __marimo__/
 .streamlit/secrets.toml
 
 # Project: downloaded images, videos and model caches stay local
-data/
+/data/
 *.mp4
 *.avi
 *.mov

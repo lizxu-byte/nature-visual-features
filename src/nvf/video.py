@@ -15,7 +15,8 @@ from nvf.semantic import Segmenter
 # Columns that describe the frame or the fit set-up rather than the content.
 NON_FEATURE_COLUMNS = {
     "frame_index", "time_s", "orig_width", "orig_height", "width", "height", "scale",
-    "fd_otsu_smin", "fd_otsu_smax", "fd_edges_smin", "fd_edges_smax",
+    "fd_otsu_smin", "fd_otsu_smax", "fd_boundary_smin", "fd_boundary_smax",
+    "fd_edges_smin", "fd_edges_smax",
     "spec_fmin", "spec_fmax",
 }
 

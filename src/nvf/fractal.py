@@ -14,13 +14,18 @@ are excluded because fewer than 8 x 8 boxes tile the image and N(s) saturates.
 Images whose sides are not multiples of s are zero-padded, which adds no
 occupied boxes.
 
-Two binary maps are derived from a grayscale image:
+Three binary maps are derived from a grayscale image:
 
 * ``otsu``: pixels brighter than the Otsu (1979) threshold are foreground.
-  This measures the bright phase; use ``invert=True`` for the dark phase.
-* ``edges``: Canny (1986) edge map, which measures the boundaries between
-  regions and is closer to the silhouette/edge measures used in landscape
-  preference studies.
+  This measures the bright phase (use ``invert=True`` for the dark phase).
+  Box-counting a filled region tends towards D = 2, so this variant mainly
+  separates sparse from space-filling bright structure.
+* ``boundary``: the one-pixel outline of the Otsu mask (pixels of the mask
+  with a 4-neighbour outside it). This is the outline of the binarised
+  pattern, in the spirit of silhouette-outline measures, and has no
+  smoothing parameter.
+* ``edges``: Canny (1986) edge map (Gaussian sigma 2 px by default), which
+  also picks up texture and shading edges that do not cross the threshold.
 
 D depends on the binarisation, the image resolution and the fit range; see
 the README for validation on patterns with known D.
@@ -31,6 +36,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
+from scipy.ndimage import binary_erosion
 from skimage.feature import canny
 from skimage.filters import threshold_otsu
 
@@ -124,6 +130,12 @@ def otsu_mask(image: np.ndarray, invert: bool = False) -> np.ndarray | None:
     return ~mask if invert else mask
 
 
+def boundary_mask(mask: np.ndarray) -> np.ndarray:
+    """Inner one-pixel outline of a binary mask; the image border is not an outline."""
+    mask = np.asarray(mask, dtype=bool)
+    return mask & ~binary_erosion(mask, border_value=1)
+
+
 def edge_mask(image: np.ndarray, sigma: float = DEFAULT_CANNY_SIGMA,
               low_threshold: float | None = None,
               high_threshold: float | None = None) -> np.ndarray:
@@ -146,6 +158,15 @@ def fractal_dimension_otsu(image: np.ndarray, invert: bool = False,
     return box_counting_dimension(mask, **kwargs)
 
 
+def fractal_dimension_boundary(image: np.ndarray, invert: bool = False,
+                               **kwargs) -> FractalResult:
+    """Box-counting D of the outline of the Otsu-binarised luminance image."""
+    mask = otsu_mask(image, invert=invert)
+    if mask is None:
+        mask = np.zeros(np.asarray(image).shape[:2], dtype=bool)
+    return box_counting_dimension(boundary_mask(mask), **kwargs)
+
+
 def fractal_dimension_edges(image: np.ndarray, sigma: float = DEFAULT_CANNY_SIGMA,
                             **kwargs) -> FractalResult:
     """Box-counting D of the Canny edge map of the luminance image."""
@@ -156,6 +177,7 @@ def fractal_features(image: np.ndarray) -> dict[str, float]:
     """Flat dict of fractal features with default parameters."""
     out: dict[str, float] = {}
     for name, res in (("otsu", fractal_dimension_otsu(image)),
+                      ("boundary", fractal_dimension_boundary(image)),
                       ("edges", fractal_dimension_edges(image))):
         lo, hi = res.scale_range
         out[f"fd_{name}"] = res.D

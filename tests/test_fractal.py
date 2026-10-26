@@ -76,3 +76,24 @@ def test_rgb_input_and_feature_dict():
     assert abs(feats["fd_otsu"] - synthetic.KNOWN_D["sierpinski_triangle"]) < 0.01
     assert feats["fd_otsu_smin"] == 2 and feats["fd_otsu_smax"] == 64
     assert set(feats) >= {"fd_edges", "fd_edges_r2"}
+
+
+def test_boundary_of_filled_square_is_one_dimensional():
+    # N(s) = 4 L/s - 4 for a square outline: the corner term bends the log-log
+    # line at coarse scales, which gives D ~ 1.06 over the default fit range.
+    res = fractal.fractal_dimension_boundary(synthetic.filled_square(1024).astype(float))
+    assert abs(res.D - 1.0) < 0.07
+
+
+def test_boundary_mask_ignores_image_border():
+    full = np.ones((64, 64), bool)
+    assert not fractal.boundary_mask(full).any()
+    sq = synthetic.filled_square(64)
+    assert fractal.boundary_mask(sq).sum() == 4 * 32 - 4
+
+
+def test_boundary_of_carpet_keeps_carpet_dimension():
+    # The carpet's holes are spread over all scales, so its outline has the same D.
+    carpet = synthetic.sierpinski_carpet(729).astype(float)
+    res = fractal.fractal_dimension_boundary(carpet)
+    assert abs(res.D - synthetic.KNOWN_D["sierpinski_carpet"]) < 0.05

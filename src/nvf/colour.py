@@ -46,7 +46,7 @@ def shannon_entropy(p: np.ndarray) -> float:
     if total <= 0:
         return float("nan")
     p = p[p > 0] / total
-    return float(-(p * np.log2(p)).sum())
+    return float(0.0 - (p * np.log2(p)).sum())  # 0.0 - x avoids returning -0.0
 
 
 def hue_entropy(image: np.ndarray, s_min: float = DEFAULT_S_MIN, v_min: float = DEFAULT_V_MIN,

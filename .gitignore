@@ -218,3 +218,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project: downloaded images, videos and model caches stay local
+/data/
+*.mp4
+*.avi
+*.mov

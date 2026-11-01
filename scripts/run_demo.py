@@ -8,7 +8,8 @@ Steps
      figures/demo_video.png
   3. Example photographs listed in examples/ATTRIBUTION.csv and present under
      data/examples/ (run scripts/fetch_examples.py first) ->
-     results/example_features.csv, figures/example_features_by_category.png.
+     results/example_features.csv, example_summary_by_category.csv (medians),
+     figures/example_features_by_category.png.
      Skipped with a message if the images are not available.
 
 Usage: python scripts/run_demo.py [--semantic]
@@ -40,6 +41,9 @@ EXAMPLES_DIR = ROOT / "data" / "examples"
 
 FPS = 5
 KEYFRAMES = ["grid_facade", "levelset_alpha_1.5", "lsystem_branching"]
+# Per-category medians written to results/example_summary_by_category.csv.
+SUMMARY_COLS = ["fd_boundary", "fd_edges", "spec_alpha", "green_view_index", "sky_view_share",
+                "sem_entropy", "hue_entropy", "colourfulness"]
 
 
 def make_walk_video(path: Path, seconds: int = 30) -> None:
@@ -106,6 +110,10 @@ def example_demo(semantic: bool) -> pd.DataFrame | None:
         rows.append({"file": r["file"], "category": r["category"], **feats})
     df = pd.DataFrame(rows)
     df.to_csv(RESULTS / "example_features.csv", index=False, float_format="%.4f")
+    summary_cols = [c for c in SUMMARY_COLS if c in df]
+    summary = df.groupby("category", sort=False)[summary_cols].median()
+    summary.insert(0, "n", df.groupby("category", sort=False).size())
+    summary.to_csv(RESULTS / "example_summary_by_category.csv", float_format="%.4f")
 
     plt = _style.apply()
     cols = [("fd_boundary", "D (Otsu outline)"), ("fd_edges", "D (Canny edges)"),
@@ -127,7 +135,7 @@ def example_demo(semantic: bool) -> pd.DataFrame | None:
                 ax.plot([v.median()] * 2, [i - 0.3, i + 0.3], color=_style.TEXT, lw=1.5)
         ax.set_title(label, loc="left", fontsize=9)
         ax.set_yticks(range(len(cats)), [c.replace("_", " ") for c in cats])
-        ax.invert_yaxis()
+    axes[0].invert_yaxis()  # shared y axis: invert once, first category on top
     fig.tight_layout()
     fig.savefig(FIGURES / "example_features_by_category.png")
     plt.close(fig)

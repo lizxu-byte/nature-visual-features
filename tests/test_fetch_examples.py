@@ -30,7 +30,7 @@ def page(licence="CC BY-SA 4.0", restrictions="", mime="image/jpeg"):
             "mime": mime,
             "url": "https://upload.wikimedia.org/full.jpg",
             "thumburl": "https://upload.wikimedia.org/thumb.jpg",
-            "thumbwidth": 1280, "thumbheight": 853,
+            "width": 4000, "height": 2666, "thumbwidth": 1280, "thumbheight": 853,
             "descriptionurl": "https://commons.wikimedia.org/wiki/File:Beech_forest.jpg",
             "extmetadata": {
                 "LicenseShortName": {"value": licence},
@@ -57,6 +57,15 @@ def test_parse_page_skips_disallowed():
     assert fetch.parse_page(page(licence="CC BY-NC 4.0"), "forest") is None
     assert fetch.parse_page(page(restrictions="personality"), "forest") is None
     assert fetch.parse_page(page(mime="image/tiff"), "forest") is None
+    assert fetch.parse_page(page(mime="image/png"), "forest") is None
+
+
+def test_parse_page_min_width():
+    assert fetch.parse_page(page(), "forest", min_width=1280) is not None
+    narrow = page()
+    narrow["imageinfo"][0]["width"] = 640
+    assert fetch.parse_page(narrow, "forest", min_width=1280) is None
+    assert fetch.parse_page(narrow, "forest") is not None
 
 
 def _http_error(code, retry_after=None):

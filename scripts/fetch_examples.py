@@ -1,10 +1,13 @@
 """Download example images from Wikimedia Commons with licence metadata.
 
-Only files licensed CC0, CC BY or CC BY-SA (any version) are kept; files
-with additional restrictions (e.g. personality rights) are skipped. Images
+Only JPEG photographs licensed CC0, CC BY or CC BY-SA (any version) are
+kept (PNG results are mostly maps and diagrams); files with additional
+restrictions (e.g. personality rights) are skipped. Images
 are saved as thumbnails (default 1280 px wide) under data/examples/<category>/
-(git-ignored); title, author, licence and source URL are recorded in
-examples/ATTRIBUTION.csv, which is committed.
+(git-ignored), and each search response is cached in data/examples/.search/
+so that a rerun after rate-limit failures resumes with the same files.
+Title, author, licence and source URL are recorded in examples/ATTRIBUTION.csv,
+which is committed.
 
 Two modes:
 
@@ -20,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import html
 import json
 import re
@@ -39,7 +43,7 @@ CATEGORIES = {
     "forest": "forest trees",
     "park_garden": "park garden lawn",
     "water": "lake shore",
-    "urban_street": "city street",
+    "urban_street": "street scene shops pedestrians",
     "building_facade": "building facade",
     "window_view": "view through window",
 }
@@ -72,8 +76,14 @@ def strip_html(text: str) -> str:
     return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", "", text or ""))).strip()
 
 
-def parse_page(page: dict, category: str) -> dict | None:
-    """Turn one API page (with imageinfo + extmetadata) into an attribution row, or None."""
+def parse_page(page: dict, category: str, min_width: int = 0) -> dict | None:
+    """Turn one API page (with imageinfo + extmetadata) into an attribution row, or None.
+
+    Files not wider than min_width are skipped: for them the API returns the
+    original file rather than a standard-size thumbnail, which Wikimedia
+    rate-limits more strictly, and they would be analysed at a lower
+    resolution than the rest.
+    """
     info = (page.get("imageinfo") or [{}])[0]
     meta = info.get("extmetadata", {})
 
@@ -85,17 +95,18 @@ def parse_page(page: dict, category: str) -> dict | None:
         return None
     if strip_html(value("Restrictions")):
         return None
-    if info.get("mime") not in {"image/jpeg", "image/png"}:
+    if info.get("mime") != "image/jpeg":
+        return None
+    if min_width and (info.get("width") or 0) <= min_width:
         return None
     thumb = info.get("thumburl") or info.get("url")
     if not thumb:
         return None
     title = page["title"]
     stem = re.sub(r"[^A-Za-z0-9_.-]+", "_", title.removeprefix("File:"))[:80]
-    suffix = ".png" if info.get("mime") == "image/png" else ".jpg"
     return {
         "category": category,
-        "file": f"{category}/{Path(stem).stem}{suffix}",
+        "file": f"{category}/{Path(stem).stem}.jpg",
         "title": title,
         "author": strip_html(value("Artist")) or "unknown",
         "licence": licence,
@@ -157,12 +168,24 @@ def download(url: str, dest: Path) -> None:
     dest.write_bytes(fetch_bytes(url, timeout=120))
 
 
+def cached_search(query: str, width: int, cache: Path) -> list[dict]:
+    """search(), with the response kept in cache so that reruns see the same results."""
+    if cache.exists():
+        return json.loads(cache.read_text("utf-8"))
+    pages = search(query, width)
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps(pages), "utf-8")
+    return pages
+
+
 def from_search(per_category: int, width: int, out_dir: Path) -> list[dict]:
     rows = []
     for category, query in CATEGORIES.items():
         kept = 0
-        for page in search(query, width):
-            row = parse_page(page, category)
+        key = hashlib.sha1(f"{query}|{width}".encode()).hexdigest()[:8]
+        cache = out_dir / ".search" / f"{category}_{key}.json"
+        for page in cached_search(query, width, cache):
+            row = parse_page(page, category, min_width=width)
             if row is None:
                 continue
             if not (out_dir / row["file"]).exists():

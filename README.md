@@ -263,18 +263,106 @@ every 2 s (`results/demo_video_*.csv`):
 
 ![video demo](results/figures/demo_video.png)
 
-**Wikimedia Commons photographs: not run in v0.1.** The build environment
-could not reach `commons.wikimedia.org`, `upload.wikimedia.org` or
-`huggingface.co` (HTTPS CONNECT refused with 403 by the network policy). The
-fetch script, the per-category analysis and the semantic features are
-implemented and tested offline, but there are no results from real
-photographs yet. With network access:
+**Wikimedia Commons photographs.** `scripts/fetch_examples.py` took the
+first five usable search results in each of six categories: JPEG only,
+CC0 / CC BY / CC BY-SA, no extra restrictions, wider than 1280 px. That is
+30 photographs, listed with author, licence and source in
+[`examples/ATTRIBUTION.csv`](examples/ATTRIBUTION.csv). They were analysed
+at 1024 px on the long side by `python scripts/run_demo.py --semantic`
+(per-image values in `results/example_features.csv`). Medians per category
+(n = 5 each; `results/example_summary_by_category.csv`):
+
+| category | D boundary | D edges | α | green view index | sky share | semantic entropy (bits) | hue entropy (bits) | colourfulness |
+|---|---|---|---|---|---|---|---|---|
+| forest | 1.75 | 1.61 | 0.87 | 0.61 | 0.07 | 1.34 | 3.09 | 31.6 |
+| park / garden | 1.46 | 1.54 | 1.05 | 0.64 | 0.21 | 1.28 | 2.36 | 43.5 |
+| water (lake shore) | 1.51 | 1.46 | 1.07 | 0.04 | 0.00 | 1.48 | 3.09 | 44.2 |
+| urban street | 1.56 | 1.54 | 1.14 | 0.00 | 0.00 | 1.65 | 3.54 | 45.2 |
+| building facade | 1.48 | 1.48 | 1.17 | 0.00 | 0.26 | 1.59 | 1.97 | 55.5 |
+| window view | 1.46 | 1.41 | 1.12 | 0.02 | 0.00 | 2.22 | 3.02 | 27.3 |
+
+![per-image features by category](results/figures/example_features_by_category.png)
+
+How to read this:
+* **Forest stands apart on the image statistics.** It has the highest
+  outline D (1.75) and the lowest α (0.87), i.e. more fine-scale structure,
+  but four of its five photos show leafless or winter trees and one is a
+  close-up of a frog (D 1.17).
+* **Elsewhere, within-category spread swamps the differences.** The other
+  five categories differ in median D by at most 0.10 and in median α by at
+  most 0.12. Spread within a category is larger: outline D runs from 1.03 to
+  1.69 for window views.
+* **Green view index and sky share mostly separate categories.** Vegetated
+  scenes come out at about 0.6 and built scenes at 0, as expected. For
+  window views, though, the near-zero values are largely a segmentation
+  failure (see below), and so is part of their high semantic entropy.
+* **Colourfulness of facades says more about the sample than about
+  facades.** Three of the five come from one photographer's series
+  ("Freopedia"), two of them of the same building, all under a deep-blue
+  sky. Two window views show the same temple.
+* **These are not representative samples of the categories.** They are
+  whatever a keyword search returned: one "water" photo is an aerial view
+  of high-rise towers on a lakefront, another a satellite image of Lake
+  MacKay. The numbers show that the pipeline runs on real photographs and
+  what it returns; they are not evidence about the categories.
+
+**Segmentation check.** `python scripts/segmentation_overlays.py` writes the
+SegFormer group labels over every photograph (`data/overlays/`, git-ignored).
+All 30 overlays were inspected. One example per category (CC BY-SA panels
+remain under CC BY-SA; credits under each panel):
+
+![SegFormer overlays](results/figures/segmentation_overlays.png)
+
+Errors seen across the 30 images:
+
+* **Views through glass are labelled as glass.** In *View through the window
+  (Breivik)* the whole view (sky, sea, mountains, shrubs) is one
+  `windowpane` region (65 % of the image). Green view index and sky share
+  are both 0.00. In a porthole view of a railway yard, a forested hillside
+  is labelled `mountain` and partly `windowpane`.
+* **"Vegetation" follows tree shapes, not green leaves.**
+  * Leafless winter canopies, including the sky between the branches, are
+    labelled `tree`: *Beech forest Mátra in winter* has a green view index
+    of 0.84 with almost no green.
+  * Behind the trunks at Hald Sø, the lake is also labelled `tree`.
+  * Sunlit scrub seen from a distance becomes `earth`/`land`: the
+    scrub-covered hills in *View through a stone window* give a green view
+    index of 0.02.
+* **Surfaces are confused by texture.**
+  * The bark of old oak trunks becomes `wall` (21 %) and `rock`/`mountain`
+    (34 %), so the Epping Forest photo, which is nearly all tree, has a
+    green view index of 0.23.
+  * Bare, sunlit dusty ground seen through a temple window becomes `water`
+    (17 %).
+  * A driftwood and shingle beach (Lake Wanaka) becomes `mountain`.
+  * Floating water lettuce on a lake edge is absorbed into `water`.
+* **Facades are labelled as one block of `building`.**
+  * On the fully glazed *Conjunto Nacional* facade, 100 % of the image is
+    `building` and 0 % `windowpane`, so window share is not a glazing ratio.
+  * The same brick piers are split arbitrarily between `building` and `wall`.
+  * Shop windows and their displays are `building`; dark glass towers break
+    up into `other` (box, ashcan).
+* **Out-of-domain images fail.** On a satellite image (Lake MacKay), ochre
+  islands become `building` and the salt crust `mountain` (72 %). On the
+  frog close-up, the frog is `person` and the blurred background `water`.
+* **What works.** Lawns, trees in leaf, sky, open water, roads, sidewalks,
+  people and vehicles in ordinary street-level and garden scenes are
+  segmented well (e.g. Conservatory Garden, the Siirt and Kharkiv streets,
+  the canal at the General Staff Building).
+
+To reproduce the photo results exactly, re-download the recorded files and
+rerun:
 
 ```bash
-python scripts/fetch_examples.py                 # ~30 CC0 / CC BY / CC BY-SA images + ATTRIBUTION.csv
-python scripts/run_demo.py --semantic            # adds results/example_features.csv and
-                                                 # figures/example_features_by_category.png
+python scripts/fetch_examples.py --from-attribution examples/ATTRIBUTION.csv
+python scripts/run_demo.py --semantic
+python scripts/segmentation_overlays.py --figure <one file per category>
 ```
+
+Wikimedia rate-limits shared IP addresses (HTTP 429 with `Retry-After` up
+to 600 s, stricter for original files than for standard thumbnail sizes).
+The fetcher waits as told and skips files it already has, so rerun it until
+it reports no skipped files.
 
 ## Limitations
 
@@ -297,8 +385,18 @@ python scripts/run_demo.py --semantic            # adds results/example_features
   vegetation, facade materials, views through glass, night scenes, VR
   renderings and head-mounted first-person video. The group mapping involves
   judgement (e.g. *field*, *fountain*, *dirt track*). Image-level shares are
-  not the hemispherical green view or sky view factor, and the model's
-  segmentation quality has **not** been checked on any data in this release.
+  not the hemispherical green view or sky view factor. Visual inspection of
+  30 Commons photographs (no pixel-level ground truth, so no accuracy
+  figure) found systematic errors (section "Demo results"):
+  * the view through a window is labelled `windowpane`, so green view index
+    and sky share of window views are near zero;
+  * leafless canopies count as vegetation, while distant scrub counts as
+    `earth`;
+  * bark becomes `wall`/`rock`, and dusty ground can become `water`;
+  * facades, glazing included, are one `building` region;
+  * aerial and close-up images fail.
+
+  Check overlays before using these features on a new kind of image.
 * **The features are descriptive.** They are not validated measures of
   restoration, preference, stress or thermal perception.
 
@@ -307,7 +405,7 @@ python scripts/run_demo.py --semantic            # adds results/example_features
 ```
 src/nvf/           fractal.py spectral.py colour.py semantic.py video.py pipeline.py cli.py
 src/nvf/data/      ade20k_groups.csv (ADE20K → group mapping)
-scripts/           validate.py make_patterns.py fetch_examples.py run_demo.py
+scripts/           validate.py make_patterns.py fetch_examples.py run_demo.py segmentation_overlays.py
 tests/             pytest suite (synthetic data only, no network)
 results/           validation and demo tables and figures (committed)
 examples/          ATTRIBUTION.csv for downloaded example images (images themselves in data/, git-ignored)
@@ -334,4 +432,7 @@ examples/          ATTRIBUTION.csv for downloaded example images (images themsel
 ## Licence
 
 MIT (see `LICENSE`). Example images fetched by the demo keep their own
-licences, recorded in `examples/ATTRIBUTION.csv`.
+licences, recorded in `examples/ATTRIBUTION.csv`. The MIT licence does not
+cover `results/figures/segmentation_overlays.png`: each of its panels is
+derived from a Commons photograph and stays under that photograph's licence
+(CC0, or CC BY-SA 3.0 / 4.0), with the credit printed above it.
